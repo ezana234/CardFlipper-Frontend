@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useLocation, useNavigate} from 'react-router-dom';
-//import Form from "react-bootstrap/Form";
-//import Button from "react-bootstrap/Button";
+import { useLocation, useNavigate } from 'react-router-dom';
+import Form from "react-bootstrap/Form";
 import "../styles/Game.css";
 import axios from "axios";
 import * as constants from './Constants';
@@ -32,7 +31,7 @@ export default function Game() {
   const [waitVisible, setWaitVisible] = useState(false);
   let initialGameState = 0;
   const { state } = useLocation();
-  const { roomID } = state;
+  let { roomID } = state;
   const turn = useRef(false)
   let count = 0;
   const [playerTurn, setPlayerTurn] = useState("");
@@ -75,8 +74,9 @@ export default function Game() {
     // got created in the backend
     setTimeout(() => {
       // Connect to web sockets
-      chatSocket.current = io("http://localhost:3003/chat/" + roomID);
-      gameSocket.current = io("http://localhost:3003/game/" + roomID);
+      console.log()
+      chatSocket.current = io(constants.SOCKET_HOST + "/chat/" + roomID);
+      gameSocket.current = io(constants.SOCKET_HOST + "/game/" + roomID);
       // Add to message array when recieving a message
       chatSocket.current.on("text", (message) => {
         setMessages(array => [...array, message])
@@ -94,17 +94,25 @@ export default function Game() {
       })
       // On win, show which user won 
       gameSocket.current.on("win", (username) => {
-        handleMessage(`${username} wins!!!`)
-        handleShow();
+          handleMessage(`${username.split("#")[0]} wins!!!`)
+          handleShow();
         // Shower with confetti
         setActiveConfetti(true)
         setTimeout(() => {
           navigate("/")
         }, 5000)
       })
-      // On update, updatehe game state
+      // On update, update or restart the game state
       gameSocket.current.on("update", (data) => {
         SetGameState(data)
+      })
+      gameSocket.current.on("restart", (data) => {
+        SetGameState(data.room)
+        const loser = data.user;
+        handleMessage(`${loser.split("#")[0]} has restarted the game which equals a forfeit.`)
+        handleShow();
+        setActiveConfetti(true)
+        setActiveConfetti(false)
       })
     }, 1500);
     return () => { setMount({}); }
@@ -168,7 +176,6 @@ export default function Game() {
     // Create CardArray
     let responseCard;
     if (obj.cards) {
-      console.log("in Cards: ", obj.cards)
       setCard([])
       for (let i = 0; i < obj.cards.length; i++) {
         // Hide cards if the cards have already been matched
@@ -206,6 +213,7 @@ export default function Game() {
       }
     }
   }
+
   // Responsible for flipping the cards
   function flip(event) {
     //increment count flip
@@ -272,6 +280,25 @@ export default function Game() {
     }
   }
 
+
+  async function restartRoom(event) {
+    event.preventDefault();
+    try {
+      if (!roomID) {
+        console.log("what")
+      } else {
+        await axios.put(constants.HOST + "/restart/", { roomID: roomID }, {
+          headers: {
+            "Authorization": "Bearer " + token
+          }
+        });
+      }
+    } catch (error) {
+      console.log(error)
+      handleMessage("Couldn't Restart Game. Try Again!")
+      handleShow();
+    }
+  }
   // HTML
   return (
     <div id="container">
@@ -295,6 +322,13 @@ export default function Game() {
         </div> : null}
       {!startVisible ? <div className="Game">
         <h3>It's {playerTurn}'s turn</h3>
+        <Form onSubmit={restartRoom}>
+          <Form.Group size="lg" controlId="restartRoom">
+          </Form.Group>
+          <Button size="lg" type="submit">
+            Restart!
+          </Button>
+        </Form>
         {/* <img src="/img/abstract_scene.svg" className="Card" height="200" width="150"/> */}
         {/* <svg id="Container" xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 285 50">
           <rect height="200" width="300" />
